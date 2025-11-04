@@ -46,7 +46,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add urls.json results.json
+            git add results.json
             git commit -m "Automated scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
             git push
           else
