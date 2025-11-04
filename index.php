@@ -8,6 +8,8 @@ define("JSON_URL",
 define("CACHE_FILE", __DIR__ . "/cache.json");
 define("CACHE_TTL", 3600);
 define("IMAGE_DIR", __DIR__ . "/covers");
+define("REFRESH_KEY", "YOUR_SECRET_KEY_HERE"); // change this!
+
 
 if (!is_dir(IMAGE_DIR)) mkdir(IMAGE_DIR, 0777, true);
 
@@ -129,11 +131,90 @@ function serveCover($item) {
 }
 
 /* --------------------------------------------------------
+   Force refresh JSON (requires key)
+---------------------------------------------------------*/
+function refreshData($key) {
+    if ($key !== REFRESH_KEY) {
+        http_response_code(403);
+        die("Invalid refresh key.");
+    }
+
+    // Remove APCu cache
+    if (function_exists("apcu_delete")) {
+        apcu_delete("ga_data");
+    }
+
+    // Remove file cache
+    if (file_exists(CACHE_FILE)) {
+        unlink(CACHE_FILE);
+    }
+
+    // Download fresh JSON and store again
+    return loadData();
+}
+
+/* --------------------------------------------------------
+   Search endpoint (/search/{query})
+---------------------------------------------------------*/
+function calcConfidence($item, $key, $query) {
+    if (!empty($item[$key])) {
+        similar_text(strtolower($item[$key]), $query, $score);
+        return $score;
+    }
+    return 0;
+}
+
+function searchData($data, $query) {
+    $query = strtolower($query);
+    $results = [];
+    $minConfidence = 70;
+
+    foreach ($data as $item) {
+        $confidence = max(
+            calcConfidence($item, "title", $query),
+            calcConfidence($item, "seriesName", $query),
+            calcConfidence($item, "rawtitle", $query),
+            calcConfidence($item, "author", $query)
+        );
+
+        if ($confidence >= $minConfidence) {
+            $item["_confidence"] = round($confidence, 2);
+            $results[] = $item;
+        }
+    }
+    if ($results) {
+        usort($results, fn($a, $b) => $b["_confidence"] <=> $a["_confidence"]);
+    }
+
+    return $results ?: null;
+}
+
+/* --------------------------------------------------------
    Very small router
 ---------------------------------------------------------*/
 $request = trim(parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH), "/");
 $parts = explode("/", $request);
 
+if ($parts[0] === "refresh") {
+    if ($_SERVER["REQUEST_METHOD"] !== "PUT") {
+        http_response_code(405);
+        header("Allow: PUT");
+        die("Method Not Allowed — refresh requires PUT");
+    }
+
+    // Get key from URL query parameter
+    $key = $_GET['key'] ?? null;
+
+    if (!$key) {
+        http_response_code(400);
+        die("Missing key in URL");
+    }
+
+    refreshData($key);
+    die("✅ Cache cleared, data refreshed.");
+}
+
+// Lookup by ASIN
 if ($parts[0] === "asin" && !empty($parts[1])) {
     $asin = clean($parts[1], "asin");
     $result = findByField($data, "asin", $asin);
@@ -146,6 +227,7 @@ if ($parts[0] === "asin" && !empty($parts[1])) {
     exit;
 }
 
+// Lookup by ISBN
 if ($parts[0] === "isbn" && !empty($parts[1])) {
     $isbn = clean($parts[1], "isbn");
     $result = findByField($data, "isbn", $isbn);
@@ -158,6 +240,7 @@ if ($parts[0] === "isbn" && !empty($parts[1])) {
     exit;
 }
 
+// Lookup by series name
 if ($parts[0] === "series" && !empty($parts[1])) {
     $series = clean(urldecode($parts[1]), "series");
     $result = findSeries($data, $series);
@@ -168,21 +251,96 @@ if ($parts[0] === "series" && !empty($parts[1])) {
     exit;
 }
 
+// General search by title or series
+if ($parts[0] === "search" && !empty($parts[1])) {
+    $query = clean(urldecode($parts[1]), "default");
+    $result = searchData($data, $query);
+    if (!$result) die("No matching entries found");
+
+    header("Content-Type: application/json");
+    echo json_encode($result, JSON_PRETTY_PRINT);
+    exit;
+}
 /* --------------------------------------------------------
    Default landing page
 ---------------------------------------------------------*/
 ?>
 <!DOCTYPE html>
-<html>
-<head><title>GraphicAudio Lookup API</title></head>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>GraphicAudio Lookup API</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        margin: 20px;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    code {
+        background: #eee;
+        padding: 2px 5px;
+        border-radius: 4px;
+    }
+    .endpoint {
+        margin-bottom: 12px;
+        background: #fff;
+        padding: 10px;
+        border-radius: 6px;
+        border-left: 5px solid #0077cc;
+    }
+    h2 {
+        margin-bottom: 8px;
+    }
+</style>
+</head>
 <body>
+
 <h2>GraphicAudio Lookup API</h2>
-<p>Usage:</p>
-<ul>
-  <li>GET <code>/asin/{asin}</code> not all books have a ASIN</li>
-  <li>GET <code>/isbn/{isbn}</code></li>
-  <li>GET <code>/series/{series}</code></li>
-  <li>Append <code>/cover</code> to retrieve cached cover</li>
-</ul>
+<p>This endpoint returns metadata scraped from Graphicaudio via <code>results.json</code>.</p>
+
+<h3>Available Endpoints</h3>
+
+<div class="endpoint">
+    <strong>Lookup by ASIN</strong><br>
+    <code>/asin/{asin}</code><br>
+    Example: <code>/asin/B09C4Y7T1Q</code><br>
+    Append <code>/cover</code> to download cached cover:<br>
+    <code>/asin/B09C4Y7T1Q/cover</code>
+</div>
+
+<div class="endpoint">
+    <strong>Lookup by ISBN</strong><br>
+    <code>/isbn/{isbn}</code><br>
+    Example: <code>/isbn/9781427280583</code><br>
+    Append <code>/cover</code> to download cached cover:<br>
+    <code>/isbn/9781427280583/cover</code>
+</div>
+
+<div class="endpoint">
+    <strong>Lookup by series name (fuzzy matching)</strong><br>
+    <code>/series/{series}</code><br>
+    Example: <code>/series/The%20Stormlight%20Archive</code>
+</div>
+
+<div class="endpoint">
+    <strong>🔍 Search (title, rawtitle, author or series)</strong><br>
+    <code>/search/{query}</code><br>
+    Example: <code>/search/Oathbringer</code>
+</div>
+
+<div class="endpoint" style="border-left-color: #cc0000;">
+    <strong>🚨 Force JSON Refresh (requires key)</strong><br>
+    <code>/refresh?key=YOUR_SECRET_KEY</code><br>
+    Clears APCu + cache.json and re-downloads fresh JSON. Must be a PUT with the key in the url<br>
+    <em>Do not expose this key publicly.</em>
+</div>
+
+<hr>
+
+<p>JSON source:<br>
+<code><?php echo JSON_URL; ?></code></p>
+
 </body>
 </html>
