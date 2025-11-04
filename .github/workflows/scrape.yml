@@ -1,0 +1,51 @@
+name: Scrape GraphicAudio catalog
+
+on:
+  workflow_dispatch:        # allow manual run
+  schedule:
+    - cron: "0 3 * * *"     # run every day at 03:00 UTC (change as you like)
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true  # allow pushing commits
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Force refresh of product URL cache
+        run: |
+          if [ -f urls.json ]; then
+            echo "🗑️ Removing old urls.json"
+            rm urls.json
+          fi
+
+      - name: Run scraper
+        run: |
+          echo "🚀 Starting scraper..."
+          node index.js
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add urls.json results.json
+            git commit -m "Automated scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+            git push
+          else
+            echo "No new data — nothing to commit"
+          fi
