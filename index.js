@@ -62,11 +62,15 @@ async function scrapeProduct(url) {
   const isbnRaw = $(".product-isbn").text().trim();
   const isbn = cleanISBN(isbnRaw);
   const rawTitle = cleanText($(".episode-name").text());
+  const cover = $(".gallery-placeholder__image").attr("src") || null;
+  if (cover.endsWith("tempcover.jpg")) {
+    cover = null;
+  }
   const { seriesEpisodeNumber, episodeTitle, episodePart, totalParts, episodeCode } = parseEpisodeTitle(rawTitle);
 
   return {
     link: url,
-    cover: $(".gallery-placeholder__image").attr("src") || null,
+    cover: cover,
     seriesName: cleanText($(".series-name").text()),
     title: episodeTitle,
     rawtitle: rawTitle,
@@ -139,6 +143,16 @@ async function scrapeAll() {
     console.log(`➡️ Scraping: ${url}`);
     try {
       const product = await scrapeProduct(url);
+
+      if (!product.title) {
+        console.error(`❌ Missing title for ${url}, skipping...`);
+        continue;
+      }
+      if (!product.cover) {
+        console.warn(`❌ Missing cover image for ${url}, skipping...`);
+        continue;
+      }
+
       results.push(product);
       fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
       console.log(`💾 Saved: ${url}`);
