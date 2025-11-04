@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "0 3 * * *"     # run every day at 03:00 UTC (change as you like)
 
+permissions:
+  contents: write
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
