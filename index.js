@@ -132,7 +132,7 @@ async function scrapeAll() {
   }
 
   for (const url of productUrls) {
-    if (scrapedUrls.has(url) || scrapedUrls.has(url.replace("graphicaudiointernational.net", "graphicaudio.net")|| scrapedUrls.has(url.replace("graphicaudio.net", "graphicaudiointernational.net")) {
+    if (scrapedUrls.has(url) || scrapedUrls.has(url.replace("graphicaudiointernational.net", "graphicaudio.net")|| scrapedUrls.has(url.replace("graphicaudio.net", "graphicaudiointernational.net")))) {
       console.log(`⏩ Skipping: ${url}`);
       continue;
     }
