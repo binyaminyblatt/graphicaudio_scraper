@@ -303,7 +303,7 @@ if ($parts[0] === "search" && !empty($parts[1])) {
 <h3>Available Endpoints</h3>
 
 <div class="endpoint">
-    <strong>Lookup by ASIN</strong><br>
+    <strong>Lookup by ASIN Not all books have ASINs</strong><br>
     <code>/asin/{asin}</code><br>
     Example: <code>/asin/B09C4Y7T1Q</code><br>
     Append <code>/cover</code> to download cached cover:<br>

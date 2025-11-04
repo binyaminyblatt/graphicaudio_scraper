@@ -56,14 +56,15 @@ jobs:
       - name: Trigger server refresh (optional)
         if: success()
         run: |
-            if [[ -n "${{ secrets.REFRESH_URL }}"]]; then
-            echo "📬 Triggering server refresh..."
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${{ secrets.REFRESH_URL }} || echo "000")
+            if [[ -n "${{ secrets.REFRESH_URL }}" ]]; then
+                echo "📬 Triggering server refresh..."
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${{ secrets.REFRESH_URL }}" || echo "000")
 
-            if [[ "$STATUS" -eq 200 ]]; then
-                echo "✅ Server refresh successful"
+                if [[ "$STATUS" -eq 200 ]]; then
+                    echo "✅ Server refresh successful"
+                else
+                    echo "⚠️ Server refresh failed, HTTP $STATUS — continuing workflow"
+                fi
             else
-                echo "⚠️ Server refresh failed, HTTP $STATUS — continuing workflow"
+                echo "REFRESH_URL not set — skipping server refresh"
             fi
-            else
-            echo "REFRESH_URL or REFRESH_KEY not set — skipping server refresh"
