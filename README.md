@@ -1,6 +1,9 @@
 # 📚 GraphicAudio Scraper + Lookup API  
 
-A personal project that scrapes metadata from **GraphicAudio** and exposes a lightweight lookup API that can also serve as an **Audiobookshelf Custom Metadata Provider**.
+> A personal project that scrapes metadata from **GraphicAudio** and exposes a lightweight lookup API that can also serve as an **Audiobookshelf Custom Metadata Provider**.
+
+> ⚠️ Note: While there is a public instance of this API, it’s hosted on a free plan with a very low data cap. If you’d like access, please send me a message and I can provide it.
+
 
 ---
 
@@ -26,21 +29,17 @@ This project contains **two components**:
 The scraper produces a structured JSON file:
 
 ```txt
-
 results.json
-
 ```
 
 The PHP API loads that JSON (cached locally or via APCu), and exposes endpoints such as:
 
 ```txt
-
 /isbn/{isbn}
 /asin/{asin}
 /series/{series-name}
 /search/{query}
 /audiobookshelf/search?query={isbn|asin|text}
-
 ````
 
 ---
@@ -54,18 +53,16 @@ The PHP API loads that JSON (cached locally or via APCu), and exposes endpoints 
 
 ### 📁 Files
 
-| File | Purpose |
-|------|---------|
-| `index.js` | Scrapes entire GraphicAudio catalog |
-| `urls.json` | Cached product URLs (improves resume) |
-| `results.json` | Output metadata JSON from scraping |
+| File           | Purpose                               |
+|----------------|---------------------------------------|
+| `index.js`     | Scrapes entire GraphicAudio catalog   |
+| `urls.json`    | Cached product URLs (improves resume) |
+| `results.json` | Output metadata JSON from scraping    |
 
 ### ▶️ Run
 
-```bash
-
+```sh
 node index.js
-
 ````
 
 The script will:
@@ -222,8 +219,8 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 
 ## ✅ Status
 
-| Feature                          | Status |
-| -------------------------------- | ------ |
+| Feature                          | Status  |
+| -------------------------------- | ------- |
 | Full catalog scraping            | ✅      |
 | ISBN lookup                      | ✅      |
 | ASIN lookup                      | ✅      |
@@ -241,10 +238,8 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 - Once you add an ASIN to a product entry in `results.json`, the PHP API can serve it via:
 
 ```txt
-
 /asin/{asin}
 /asin/{asin}/cover
-
 ```
 
 - Example JSON with ASIN field added:
@@ -294,13 +289,13 @@ results.json
 
 Next run:
 
-```bash
+```sh
 node scraper.js
 ```
 
 To force the PHP endpoint to refresh:
 
-```bash
+```sh
 curl -X PUT "https://yourdomain/refresh?key=SECRET"
 ```
 
