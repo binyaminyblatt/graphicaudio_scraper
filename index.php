@@ -205,6 +205,17 @@ function coverUrlFromISBN($isbn) {
     return $base . "/isbn/" . urlencode($isbn) . "/cover";
 }
 
+function cleanRawTitle($rawtitle) {
+    if (!$rawtitle) return null;
+
+    // Split by ':' and take the last part
+    $parts = explode(":", $rawtitle);
+    $last = end($parts);
+
+    // Trim whitespace
+    return trim($last);
+}
+
 /**
  * Format JSON output for Audiobookshelf
  */
@@ -226,7 +237,7 @@ function outputABSResult($items) {
         }
         $abs = [
             'url'          => $item["link"] ?? null,
-            "title"        => $item["title"] ?? null,
+            "title"        => cleanRawTitle($item["rawtitle"]),
             "subtitle"     => $item["subtitle"] ?? null,
             "author"       => $item["author"] ?? null,
             "authors"      => [$item["author"]] ?? null,
@@ -388,8 +399,6 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 
     // Detect ASIN (alphanumeric, exactly 10 chars)
     if (preg_match("/^[A-Za-z0-9]{10}$/", $query)) {
-        $query = str_replace("[Dramatized Adaptation]", "", $query);
-        $query = str_replace("(Dramatized Adaptation)", "", $query);
         $result = findByField($data, "asin", $query);
 
         if ($result) {
@@ -397,7 +406,8 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
             exit;
         }
     }
-
+    $query = str_replace("[Dramatized Adaptation]", "", $query);
+    $query = str_replace("(Dramatized Adaptation)", "", $query);
     // Otherwise → fuzzy search
     $results = searchData($data, $query);
     
@@ -444,6 +454,13 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 <h2>GraphicAudio Lookup API</h2>
 <p>This endpoint returns metadata scraped from Graphicaudio via <code>results.json</code>.</p>
 
+<div style="background:#fff3cd; border-left:5px solid #ffcc00; padding:10px; border-radius:6px; margin-bottom:16px;">
+    <strong>Disclaimer:</strong><br>
+    This API is a <em>personal hobby project</em>.  
+    It is <strong>not affiliated with, endorsed by, or associated with GraphicAudio</strong>.  
+    All trademarks and content belong to their respective owners.
+</div>
+
 <h3>Available Endpoints</h3>
 
 <div class="endpoint">
@@ -477,7 +494,11 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 <div class="endpoint" style="border-left-color:#aa00ff;">
     <strong>📚 Audiobookshelf Metadata Provider</strong><br>
     <code>/audiobookshelf/search?query={isbn|asin|text}</code><br>
+    <?php if (AUDIOBOOKSHELF_KEY !='abs'): ?>
     Requires <code>Authorization: YOUR_API_KEY</code> header.<br>
+    <?php else: ?>
+    Ignores authentication (open access).<br>
+    <?php endif; ?>
     <small>Automatically detects ISBN / ASIN / text search.</small><br>
     Example (ISBN): <code>/audiobookshelf/search?query=9798896520030</code><br>
     Example (Title search): <code>/audiobookshelf/search?query=Stormlight</code>
@@ -494,6 +515,27 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 
 <p>JSON source:<br>
 <code><?php echo JSON_URL; ?></code></p>
+
+
+<footer style="
+    margin-top: 25px;
+    padding-top: 15px;
+    font-size: 0.9rem;
+    color: #555;
+">
+    <p>
+        This project is a hobby project created for personal use.
+        It is <strong>not affiliated with, endorsed, or supported by GraphicAudio® 
+        or any related entities.</strong><br>
+        All trademarks and product names are the property of their respective owners.
+    </p>
+    <p>
+        Source code available on GitHub:
+        <a href="https://github.com/binyaminyblatt/graphicaudio_scraper" target="_blank">
+            https://github.com/binyaminyblatt/graphicaudio_scraper
+        </a>
+    </p>
+</footer>
 
 </body>
 </html>
