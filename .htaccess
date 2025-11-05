@@ -1,0 +1,18 @@
+php_value display_errors Off
+php_value mbstring.http_input auto
+php_value date.timezone Asia/Jerusalem
+# 
+RewriteEngine On
+# Ensure we are in the correct base path
+RewriteBase /
+# Don't rewrite existing files or directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+# Route all requests to index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
+# Security: prevent direct listing of the covers folder
+<Directory "covers">
+    Options -Indexes
+</Directory>
+# Force correct content types for images (optional safety)
+AddType image/jpeg .jpg
