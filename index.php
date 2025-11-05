@@ -9,6 +9,11 @@ define("CACHE_FILE", __DIR__ . "/cache.json");
 define("CACHE_TTL", 3600);
 define("IMAGE_DIR", __DIR__ . "/covers");
 define("REFRESH_KEY", "YOUR_SECRET_KEY_HERE"); // change this!
+define("AUDIOBOOKSHELF_KEY", "abs"); // change this!
+// Use "abs" (default) for no authentication
+define("DEBUG_LOG", __DIR__ . "/debug.log");
+define("DEBUG", false); // set to true to enable debug logging
+
 
 
 if (!is_dir(IMAGE_DIR)) mkdir(IMAGE_DIR, 0777, true);
@@ -188,6 +193,76 @@ function searchData($data, $query) {
 
     return $results ?: null;
 }
+/* --------------------------------------------------------
+   Audiobookshelf Metadata Provider
+---------------------------------------------------------*/
+function coverUrlFromISBN($isbn) {
+    // builds:  https://currentdomain/isbn/{isbn}/cover
+    $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http")
+          . "://"
+          . $_SERVER['HTTP_HOST'];
+
+    return $base . "/isbn/" . urlencode($isbn) . "/cover";
+}
+
+/**
+ * Format JSON output for Audiobookshelf
+ */
+function outputABSResult($items) {
+    $response = ["matches" => []];
+
+    foreach ($items as $item) {
+        $narrator = null;
+        if (!empty($item["cast"]) && is_array($item["cast"])) {
+            $narrator = implode(", ", $item["cast"]);
+        }
+        $publishedYear = null;
+
+        if (!empty($item["releaseDate"])) {
+            $timestamp = strtotime($item["releaseDate"]);
+            if ($timestamp !== false) {
+                $publishedYear = date("Y", $timestamp);
+            }
+        }
+        $abs = [
+            'url'          => $item["link"] ?? null,
+            "title"        => $item["title"] ?? null,
+            "subtitle"     => $item["subtitle"] ?? null,
+            "author"       => $item["author"] ?? null,
+            "authors"      => [$item["author"]] ?? null,
+            "narrator"     => $narrator,
+            "narrators"    => !empty($item["cast"]) ? $item["cast"] : [],
+            "publisher"    => "GraphicAudio",
+            "publishedYear"=> $publishedYear ?? null,
+            "description"  => $item["description"]  ?? null,
+            "cover"        => isset($item["isbn"]) && $item["isbn"] !== "" ? coverUrlFromISBN($item["isbn"]) : null,
+            "isbn"         => $item["isbn"] ?? null,
+            "asin"         => $item["asin"] ?? null,
+            "genres"       => [$item["genre"] ?? null],
+            "tags"         => [],
+            "language"     => "English"
+        ];
+        // Only include series if values exist
+        if (!empty($item["seriesName"])) {
+            $abs["series"] = [[
+                "series"   => $item["seriesName"],
+                "sequence" => $item["episodeCode"] ?? null
+            ]];
+        }
+
+        $response["matches"][] = $abs;
+    }
+    // --- DEBUG LOGGING ---
+    if (DEBUG) {
+        $logData  = "----- " . date("c") . " -----\n";
+        $logData .= "REQUEST URI: " . ($_SERVER['REQUEST_URI'] ?? 'N/A') . "\n";
+        $logData .= "QUERY PARAMS: " . json_encode($_GET) . "\n";
+        $logData .= "RESPONSE JSON: " . json_encode($response, JSON_UNESCAPED_SLASHES) . "\n\n";
+        file_put_contents(DEBUG_LOG, $logData, FILE_APPEND);
+    }
+    header("Content-Type: application/json");
+    echo json_encode($response);
+}
 
 /* --------------------------------------------------------
    Very small router
@@ -261,6 +336,75 @@ if ($parts[0] === "search" && !empty($parts[1])) {
     echo json_encode($result, JSON_PRETTY_PRINT);
     exit;
 }
+
+if ($parts[0] === "debug") {
+    if (DEBUG) {
+        header("Content-Type: text/plain");
+        echo file_get_contents(DEBUG_LOG);
+        exit;
+    } else {
+        http_response_code(404);
+        die("Debug logging is disabled.");
+    }
+}
+
+// Audiobookshelf custom metadata provider search
+if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
+
+    // Authentication if key is set (otherwise open)
+    if (AUDIOBOOKSHELF_KEY !='abs'){
+        // Authentication via AUTHORIZATION header (Audiobookshelf Metadata Provider)
+        $apiKey =
+            $_SERVER["HTTP_AUTHORIZATION"] ??
+            $_SERVER["Authorization"] ??
+            $_SERVER["REDIRECT_HTTP_AUTHORIZATION"] ??
+            null;
+
+        if (!$apiKey || $apiKey !== AUDIOBOOKSHELF_KEY) {
+            http_response_code(401);
+            echo json_encode(["error" => "Unauthorized"]);
+            exit;
+        }
+    }
+    
+    $queryRaw = $_GET["query"] ?? null;
+    if (!$queryRaw) {
+        http_response_code(400);
+        echo json_encode(["error" => "query parameter required"]);
+        exit;
+    }
+
+    $query = clean($queryRaw, "default");
+
+    // Detect ISBN (numbers only, 10 or 13 digits)
+    if (preg_match("/^[0-9]{10,13}$/", $query)) {
+        $result = findByField($data, "isbn", $query);
+
+        if ($result) {
+            outputABSResult([$result]);
+            exit;
+        }
+    }
+
+    // Detect ASIN (alphanumeric, exactly 10 chars)
+    if (preg_match("/^[A-Za-z0-9]{10}$/", $query)) {
+        $query = str_replace("[Dramatized Adaptation]", "", $query);
+        $query = str_replace("(Dramatized Adaptation)", "", $query);
+        $result = findByField($data, "asin", $query);
+
+        if ($result) {
+            outputABSResult([$result]);
+            exit;
+        }
+    }
+
+    // Otherwise → fuzzy search
+    $results = searchData($data, $query);
+    
+    outputABSResult($results ?? []);
+    exit;
+}
+
 /* --------------------------------------------------------
    Default landing page
 ---------------------------------------------------------*/
@@ -328,6 +472,15 @@ if ($parts[0] === "search" && !empty($parts[1])) {
     <strong>🔍 Search (title, rawtitle, author or series)</strong><br>
     <code>/search/{query}</code><br>
     Example: <code>/search/Oathbringer</code>
+</div>
+
+<div class="endpoint" style="border-left-color:#aa00ff;">
+    <strong>📚 Audiobookshelf Metadata Provider</strong><br>
+    <code>/audiobookshelf/search?query={isbn|asin|text}</code><br>
+    Requires <code>Authorization: YOUR_API_KEY</code> header.<br>
+    <small>Automatically detects ISBN / ASIN / text search.</small><br>
+    Example (ISBN): <code>/audiobookshelf/search?query=9798896520030</code><br>
+    Example (Title search): <code>/audiobookshelf/search?query=Stormlight</code>
 </div>
 
 <div class="endpoint" style="border-left-color: #cc0000;">
