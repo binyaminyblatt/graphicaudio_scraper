@@ -13,8 +13,35 @@ define("AUDIOBOOKSHELF_KEY", "abs"); // change this!
 // Use "abs" (default) for no authentication
 define("DEBUG_LOG", __DIR__ . "/debug.log");
 define("DEBUG", false); // set to true to enable debug logging
+define("LOW_BANDWIDTH_LIMIT_ENABLE", true);
 
 
+
+function getAuthHeader() {
+    foreach ([
+        "HTTP_AUTHORIZATION",
+        "Authorization",
+        "REDIRECT_HTTP_AUTHORIZATION",
+        "HTTP_X_AUTHORIZATION"
+    ] as $key) {
+        if (!empty($_SERVER[$key])) return trim($_SERVER[$key]);
+    }
+    return null;
+}
+
+
+if (LOW_BANDWIDTH_LIMIT_ENABLE){
+    $BandwidthKey = getAuthHeader();
+
+    if ($BandwidthKey === REFRESH_KEY) {
+        // Exempt from rate limiting
+        define("LOW_BANDWIDTH_LIMIT", false);
+    }else{
+        define("LOW_BANDWIDTH_LIMIT", true);
+    }
+}else{
+    define("LOW_BANDWIDTH_LIMIT", false);
+}
 
 if (!is_dir(IMAGE_DIR)) mkdir(IMAGE_DIR, 0777, true);
 
@@ -121,6 +148,11 @@ function serveCover($item) {
     if (empty($item["cover"])) {
         http_response_code(404);
         die("No cover available for this entry.");
+    }
+
+    if (LOW_BANDWIDTH_LIMIT) {
+        header("Location: " . $item["cover"], true, 302);
+        exit;
     }
 
     $filename = IMAGE_DIR . "/" . md5($item["cover"]) . ".jpg";
@@ -235,21 +267,28 @@ function outputABSResult($items) {
                 $publishedYear = date("Y", $timestamp);
             }
         }
+        if (LOW_BANDWIDTH_LIMIT) {
+            // Remove description to save bandwidth
+            $cover = $item['cover'] ?? null;
+        } else {
+            $cover = isset($item["isbn"]) && $item["isbn"] !== "" ? coverUrlFromISBN($item["isbn"]) : null;
+        }
+
         $abs = [
             'url'          => $item["link"] ?? null,
             "title"        => cleanRawTitle($item["rawtitle"]),
             "subtitle"     => $item["subtitle"] ?? null,
             "author"       => $item["author"] ?? null,
-            "authors"      => [$item["author"]] ?? null,
+            "authors"      => !empty($item["author"]) ? [$item["author"]] : [],
             "narrator"     => $narrator,
             "narrators"    => !empty($item["cast"]) ? $item["cast"] : [],
             "publisher"    => "GraphicAudio",
             "publishedYear"=> $publishedYear ?? null,
             "description"  => $item["description"]  ?? null,
-            "cover"        => isset($item["isbn"]) && $item["isbn"] !== "" ? coverUrlFromISBN($item["isbn"]) : null,
+            "cover"        => $cover,
             "isbn"         => $item["isbn"] ?? null,
             "asin"         => $item["asin"] ?? null,
-            "genres"       => [$item["genre"] ?? null],
+            "genres"       => !empty($item["genre"]) ? [$item["genre"]] : [],
             "tags"         => [],
             "language"     => "English"
         ];
@@ -257,7 +296,7 @@ function outputABSResult($items) {
         if (!empty($item["seriesName"])) {
             $abs["series"] = [[
                 "series"   => $item["seriesName"],
-                "sequence" => $item["episodeCode"] ?? null
+                "sequence" => is_numeric($item["episodeCode"]) ? floatval($item["episodeCode"]) : null
             ]];
         }
 
@@ -274,6 +313,40 @@ function outputABSResult($items) {
     header("Content-Type: application/json");
     echo json_encode($response);
 }
+
+/* --------------------------------------------------------
+   Bandwidth rate limiting
+---------------------------------------------------------*/
+if (LOW_BANDWIDTH_LIMIT) {
+    if (!function_exists("rateLimit")) {
+        function rateLimit() {
+            $file = __DIR__ . "/rate.log";
+            $limit = 2000; // limit requests/hour
+            $window = 3600;
+
+            $now = time();
+            $log = [];
+
+            if (file_exists($file)) {
+                $log = json_decode(file_get_contents($file), true);
+            }
+
+            // purge old entries
+            $log = array_filter($log, fn($t) => ($now - $t) < $window);
+
+            if (count($log) >= $limit) {
+                http_response_code(429);
+                die("Rate limit exceeded (low bandwidth mode)");
+            }
+
+            $log[] = $now;
+            file_put_contents($file, json_encode($log));
+        }
+    }
+
+    rateLimit();
+}
+
 
 /* --------------------------------------------------------
    Very small router
@@ -365,11 +438,7 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
     // Authentication if key is set (otherwise open)
     if (AUDIOBOOKSHELF_KEY !='abs'){
         // Authentication via AUTHORIZATION header (Audiobookshelf Metadata Provider)
-        $apiKey =
-            $_SERVER["HTTP_AUTHORIZATION"] ??
-            $_SERVER["Authorization"] ??
-            $_SERVER["REDIRECT_HTTP_AUTHORIZATION"] ??
-            null;
+        $apiKey = getAuthHeader();
 
         if (!$apiKey || $apiKey !== AUDIOBOOKSHELF_KEY) {
             http_response_code(401);
