@@ -10,11 +10,17 @@ let data = JSON.parse(fs.readFileSync(RESULTS_FILE, "utf-8"));
 async function fetchASIN(isbn) {
   try {
     const url = `${API_URL}?isbn=${isbn}&page=1&limit=1`;
-    const { data } = await axios.get(url);
-    
+    const { data } = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "GraphicAudio-Lookup/1.0 (ISBN-ASIN Matcher; +https://graphicaudio-api.endl.site/; "+
+          "GitHub: https://github.com/binyaminyblatt/graphicaudio_scraper.git)",
+      },
+    });
+
     if (data && data.items && data.items.length > 0) {
       const item = data.items[0];
-      return item.asin || null;  // assuming API returns "asin" field
+      return item.asin || null; // assuming API returns "asin" field
     }
     return null;
   } catch (err) {
@@ -39,10 +45,10 @@ async function updateASINs() {
         console.log(`⚠️ No ASIN found for ISBN ${entry.isbn}`);
       }
     } else {
-        console.log(`ℹ️ Entry already has ASIN: ${entry.asin}`);
-        continue;
+      console.log(`ℹ️ Entry already has ASIN: ${entry.asin}`);
+      continue;
     }
-  } 
+  }
 
   fs.writeFileSync(RESULTS_FILE, JSON.stringify(data, null, 2));
   console.log(`\n💾 Done! Updated ${updated} entries with ASINs.`);
