@@ -8,11 +8,14 @@ define("JSON_URL",
 define("CACHE_FILE", __DIR__ . "/cache.json");
 define("CACHE_TTL", 3600);
 define("IMAGE_DIR", __DIR__ . "/covers");
+
+define("WAYBACK_URL", "https://raw.githubusercontent.com/binyaminyblatt/graphicaudio_scraper/refs/heads/main/wayback_results.json");
+define("WAYBACK_CACHE_FILE", __DIR__ . "/wayback_cache.json");
 define("REFRESH_KEY", "YOUR_SECRET_KEY_HERE"); // change this!
 define("AUDIOBOOKSHELF_KEY", "abs"); // change this!
 // Use "abs" (default) for no authentication
 define("DEBUG_LOG", __DIR__ . "/debug.log");
-define("DEBUG", false); // set to true to enable debug logging
+define("DEBUG", false); // set to true to enable debug logging and allow GET refresh (not recommended for production)
 define("LOW_BANDWIDTH_LIMIT_ENABLE", true);
 
 
@@ -44,6 +47,24 @@ if (LOW_BANDWIDTH_LIMIT_ENABLE){
 }
 
 if (!is_dir(IMAGE_DIR)) mkdir(IMAGE_DIR, 0777, true);
+
+/* --------------------------------------------------------
+   Helper function to download with cURL using native CA
+---------------------------------------------------------*/
+function downloadWithCurl($url) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    if (defined('CURLSSLOPT_NATIVE_CA')) {
+        curl_setopt($ch, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+    }
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30); // timeout
+    $result = curl_exec($ch);
+    curl_close($ch);
+    return $result;
+}
 
 /* --------------------------------------------------------
    Sanitize user input
@@ -88,7 +109,7 @@ function loadData() {
     }
 
     // ✅ Download fresh JSON
-    $json = @file_get_contents(JSON_URL);
+    $json = downloadWithCurl(JSON_URL);
     if (!$json) die("Could not download JSON data");
 
     file_put_contents(CACHE_FILE, $json);
@@ -102,7 +123,42 @@ function loadData() {
     return $data;
 }
 
-$data = loadData();
+/* --------------------------------------------------------
+   Load Wayback JSON from APCu cache / remote
+---------------------------------------------------------*/
+function loadWaybackData() {
+    // ✅ If APCu exists, use it
+    if (function_exists("apcu_exists") && apcu_exists("ga_wayback_data")) {
+        return apcu_fetch("ga_wayback_data");
+    }
+
+    // ✅ File cache fallback
+    if (file_exists(WAYBACK_CACHE_FILE)) {
+        $age = time() - filemtime(WAYBACK_CACHE_FILE);
+        if ($age < CACHE_TTL) {
+            $json = file_get_contents(WAYBACK_CACHE_FILE);
+            return json_decode($json, true);
+        }
+    }
+
+    // ✅ Download fresh JSON
+    $json = downloadWithCurl(WAYBACK_URL);
+    if (!$json) die("Could not download JSON data");
+
+    file_put_contents(WAYBACK_CACHE_FILE, $json);
+
+    $wayback_data = json_decode($json, true);
+
+    if (function_exists("apcu_store")) {
+        apcu_store("ga_wayback_data", $wayback_data, CACHE_TTL);
+    }
+
+    return $wayback_data;
+}
+
+
+$ga_data = loadData();
+$wayback_data = loadWaybackData();
 
 /* --------------------------------------------------------
    Lookup helpers
@@ -112,12 +168,14 @@ function findByField($data, $field, $value) {
 
     foreach ($data as $item) {
         if (!empty($item[$field]) && strtolower($item[$field]) === strtolower($value)) {
+            $item["titleOther"] = cleanRawTitle($item["rawtitle"]);
             return $item; // exact match
         }
 
         if (!empty($item[$field])) {
             similar_text(strtolower($item[$field]), strtolower($value), $score);
             if ($score >= 70) {
+                $item["titleOther"] = cleanRawTitle($item["rawtitle"]);
                 $item["_confidence"] = round($score, 2);
                 $matches[] = $item;
             }
@@ -159,7 +217,7 @@ function serveCover($item) {
 
     if (!file_exists($filename)) {
         // `@` prevents warnings on bad URLs / image download failures
-        @file_put_contents($filename, @file_get_contents($item["cover"]));
+        @file_put_contents($filename, downloadWithCurl($item["cover"]));
     }
 
     header("Content-Type: image/jpeg");
@@ -171,6 +229,7 @@ function serveCover($item) {
    Force refresh JSON (requires key)
 ---------------------------------------------------------*/
 function refreshData($key) {
+    global $waybackMode;
     if ($key !== REFRESH_KEY) {
         http_response_code(403);
         die("Invalid refresh key.");
@@ -179,15 +238,24 @@ function refreshData($key) {
     // Remove APCu cache
     if (function_exists("apcu_delete")) {
         apcu_delete("ga_data");
+        apcu_delete("ga_wayback_data");
     }
 
     // Remove file cache
     if (file_exists(CACHE_FILE)) {
         unlink(CACHE_FILE);
+        unlink(WAYBACK_CACHE_FILE);
     }
 
     // Download fresh JSON and store again
-    return loadData();
+    if ($waybackMode) {
+        loadData(); // also refresh main dataset to keep them in sync
+        return loadWaybackData();
+    } else {
+        loadWaybackData(); // also refresh wayback dataset to keep them in sync
+        return loadData();
+    }
+
 }
 
 /* --------------------------------------------------------
@@ -207,8 +275,10 @@ function searchData($data, $query) {
     $minConfidence = 70;
 
     foreach ($data as $item) {
+        $item["titleOther"] = cleanRawTitle($item["rawtitle"]);
         $confidence = max(
             calcConfidence($item, "title", $query),
+            calcConfidence($item, "titleOther", $query),
             calcConfidence($item, "seriesName", $query),
             calcConfidence($item, "rawtitle", $query),
             calcConfidence($item, "author", $query)
@@ -230,11 +300,16 @@ function searchData($data, $query) {
 ---------------------------------------------------------*/
 function coverUrlFromISBN($isbn) {
     // builds:  https://currentdomain/isbn/{isbn}/cover
+    // If the request is under /wayback, keep that prefix so the correct dataset is used.
+    global $waybackMode;
+
     $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http")
           . "://"
           . $_SERVER['HTTP_HOST'];
 
-    return $base . "/isbn/" . urlencode($isbn) . "/cover";
+    $prefix = !empty($waybackMode) ? "/wayback" : "";
+
+    return $base . $prefix . "/isbn/" . urlencode($isbn) . "/cover";
 }
 
 function cleanRawTitle($rawtitle) {
@@ -347,6 +422,42 @@ if (LOW_BANDWIDTH_LIMIT) {
     rateLimit();
 }
 
+/* --------------------------------------------------------
+    ISBN Toolbox
+---------------------------------------------------------*/
+function isValidISBN10($isbn) {
+    if (!preg_match('/^[0-9]{9}[0-9X]$/i', $isbn)) return false;
+
+    $sum = 0;
+    for ($i = 0; $i < 9; $i++) {
+        $sum += ((int)$isbn[$i]) * ($i + 1);
+    }
+
+    $check = strtoupper($isbn[9]);
+    $sum += ($check === 'X') ? 10 * 10 : ((int)$check) * 10;
+
+    return $sum % 11 === 0;
+}
+
+function isValidISBN13($isbn) {
+    if (!preg_match('/^[0-9]{13}$/', $isbn)) return false;
+
+    $sum = 0;
+    for ($i = 0; $i < 12; $i++) {
+        $sum += (int)$isbn[$i] * ($i % 2 === 0 ? 1 : 3);
+    }
+
+    $check = (10 - ($sum % 10)) % 10;
+    return $check === (int)$isbn[12];
+}
+
+function isValidISBN($query) {
+    if (strlen($query) == 10) return isValidISBN10($query);
+    if (strlen($query) == 13) return isValidISBN13($query);
+    return false;
+}
+
+
 
 /* --------------------------------------------------------
    Very small router
@@ -354,11 +465,26 @@ if (LOW_BANDWIDTH_LIMIT) {
 $request = trim(parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH), "/");
 $parts = explode("/", $request);
 
-if ($parts[0] === "refresh") {
+// Support a “/wayback/*” prefix that uses archived data from wayback_results.json
+$waybackMode = false;
+$dataSource = $ga_data;
+if (isset($parts[0]) && $parts[0] === "wayback") {
+    $waybackMode = true;
+    array_shift($parts);
+    $dataSource = $wayback_data;
+}
+
+if (!empty($parts) && $parts[0] === "refresh") {
     if ($_SERVER["REQUEST_METHOD"] !== "PUT") {
-        http_response_code(405);
-        header("Allow: PUT");
-        die("Method Not Allowed — refresh requires PUT");
+        if (!DEBUG) {
+            http_response_code(405);
+            header("Allow: PUT");
+            die("Method Not Allowed — refresh requires PUT");
+        } else {
+            // Allow GET for refresh in debug mode for easier testing
+            refreshData($_GET['key'] ?? '');
+            die("✅ Cache cleared, data refreshed. (Debug mode allows GET)");
+        }
     }
 
     // Get key from URL query parameter
@@ -374,9 +500,9 @@ if ($parts[0] === "refresh") {
 }
 
 // Lookup by ASIN
-if ($parts[0] === "asin" && !empty($parts[1])) {
+if (!empty($parts) && $parts[0] === "asin" && !empty($parts[1])) {
     $asin = clean($parts[1], "asin");
-    $result = findByField($data, "asin", $asin);
+    $result = findByField($dataSource, "asin", $asin);
     if (!$result) die("ASIN not found");
 
     if (isset($parts[2]) && $parts[2] === "cover") serveCover($result);
@@ -387,9 +513,9 @@ if ($parts[0] === "asin" && !empty($parts[1])) {
 }
 
 // Lookup by ISBN
-if ($parts[0] === "isbn" && !empty($parts[1])) {
+if (!empty($parts) && $parts[0] === "isbn" && !empty($parts[1])) {
     $isbn = clean($parts[1], "isbn");
-    $result = findByField($data, "isbn", $isbn);
+    $result = findByField($dataSource, "isbn", $isbn);
     if (!$result) die("ISBN not found");
 
     if (isset($parts[2]) && $parts[2] === "cover") serveCover($result);
@@ -400,9 +526,9 @@ if ($parts[0] === "isbn" && !empty($parts[1])) {
 }
 
 // Lookup by series name
-if ($parts[0] === "series" && !empty($parts[1])) {
+if (!empty($parts) && $parts[0] === "series" && !empty($parts[1])) {
     $series = clean(urldecode($parts[1]), "series");
-    $result = findSeries($data, $series);
+    $result = findSeries($dataSource, $series);
     if (!$result) die("Series not found");
 
     header("Content-Type: application/json");
@@ -411,9 +537,11 @@ if ($parts[0] === "series" && !empty($parts[1])) {
 }
 
 // General search by title or series
-if ($parts[0] === "search" && !empty($parts[1])) {
+if (!empty($parts) && $parts[0] === "search" && !empty($parts[1])) {
     $query = clean(urldecode($parts[1]), "default");
-    $result = searchData($data, $query);
+    $query = str_replace("[Dramatized Adaptation]", "", $query);
+    $query = str_replace("(Dramatized Adaptation)", "", $query);
+    $result = searchData($dataSource, $query);
     if (!$result) die("No matching entries found");
 
     header("Content-Type: application/json");
@@ -421,7 +549,7 @@ if ($parts[0] === "search" && !empty($parts[1])) {
     exit;
 }
 
-if ($parts[0] === "debug") {
+if (!empty($parts) && $parts[0] === "debug") {
     if (DEBUG) {
         header("Content-Type: text/plain");
         echo file_get_contents(DEBUG_LOG);
@@ -433,7 +561,7 @@ if ($parts[0] === "debug") {
 }
 
 // Audiobookshelf custom metadata provider search
-if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
+if (!empty($parts) && $parts[0] === "audiobookshelf" && $parts[1] === "search") {
 
     // Authentication if key is set (otherwise open)
     if (AUDIOBOOKSHELF_KEY !='abs'){
@@ -457,8 +585,8 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
     $query = clean($queryRaw, "default");
 
     // Detect ISBN (numbers only, 10 or 13 digits)
-    if (preg_match("/^[0-9]{10,13}$/", $query)) {
-        $result = findByField($data, "isbn", $query);
+    if (isValidISBN($query)) {
+        $result = findByField($dataSource, "isbn", $query);
 
         if ($result) {
             outputABSResult([$result]);
@@ -468,7 +596,7 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 
     // Detect ASIN (alphanumeric, exactly 10 chars)
     if (preg_match("/^[A-Za-z0-9]{10}$/", $query)) {
-        $result = findByField($data, "asin", $query);
+        $result = findByField($dataSource, "asin", $query);
 
         if ($result) {
             outputABSResult([$result]);
@@ -478,7 +606,7 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
     $query = str_replace("[Dramatized Adaptation]", "", $query);
     $query = str_replace("(Dramatized Adaptation)", "", $query);
     // Otherwise → fuzzy search
-    $results = searchData($data, $query);
+    $results = searchData($dataSource, $query);
     
     outputABSResult($results ?? []);
     exit;
@@ -487,6 +615,7 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 /* --------------------------------------------------------
    Default landing page
 ---------------------------------------------------------*/
+$prefix = !empty($waybackMode) ? "/wayback" : "";
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -516,66 +645,117 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
     h2 {
         margin-bottom: 8px;
     }
+    .wayback{
+        background: #d1ecf1; 
+        border-left:5px solid #0c5460; 
+        padding:10px; 
+        border-radius:6px; 
+        margin-bottom:16px;
+    }
+    .disclaimer{
+        background: #fff3cd; 
+        border-left:5px solid #ffcc00; 
+        padding:10px; 
+        border-radius:6px; 
+        margin-bottom:16px;
+        color: #856404;
+    }
+    .red-border {
+        border-left-color: #cc0000 !important;
+    }
+    .purple-border {
+        border-left-color: #aa00ff !important;
+    }
+    .yellow-border {
+        border-left-color: #ffcc00 !important;
+    }
+    footer {
+        margin-top: 25px;
+        padding-top: 15px;
+        font-size: 0.9rem;
+        color: #555;
+    }
 </style>
 </head>
 <body>
 
 <h2>GraphicAudio Lookup API</h2>
-<p>This endpoint returns metadata scraped from Graphicaudio via <code>results.json</code>.</p>
-
-<div style="background:#fff3cd; border-left:5px solid #ffcc00; padding:10px; border-radius:6px; margin-bottom:16px;">
+<p>This endpoint returns metadata scraped from GraphicAudio using the <?php if ($waybackMode): ?>Wayback Machine <code>wayback_results.json</code><?php else: ?><code>results.json</code><?php endif; ?> data file.</p>
+<?php if ($waybackMode): ?>
+    <p>To query the active dataset, remove <code>/wayback/</code> from any endpoint (e.g. <code>/isbn/{isbn}</code>).</p>
+<?php else: ?>
+    <p>To query the archived Wayback dataset, prepend <code>/wayback/</code> to any endpoint (e.g. <code>/wayback/isbn/{isbn}</code>).</p>
+<?php endif; ?>
+<?php if ($waybackMode): ?>
+    <div class="wayback">
+        <strong>Wayback Mode:</strong><br>
+        You are currently viewing archived data from the Wayback Machine.  
+        Results may be outdated and incomplete compared to the main dataset.
+    </div>
+<?php endif; ?>
+<div class="disclaimer">
     <strong>Disclaimer:</strong><br>
     This API is a <em>personal hobby project</em>.  
     It is <strong>not affiliated with, endorsed by, or associated with GraphicAudio</strong>.  
     All trademarks and content belong to their respective owners.
 </div>
-
+<div class="endpoint yellow-border">
+    <strong>Important Note about the Wayback Dataset:</strong><br>
+    <p>The Wayback dataset contains entries that have since been removed from GraphicAudio before I started scraping.<br>
+        I captured as much as I could, but the dataset is incomplete and may be missing metadata (covers, ISBNs, etc.).<br>
+        If you find a Wayback Machine snapshot of a missing entry, please open a
+        <a href="https://github.com/binyaminyblatt/graphicaudio-api/issues" target="_blank">GitHub issue</a>
+        with the snapshot link and I’ll see if I can add it.<br>
+         Note that some missing fields (especially covers) may not be recoverable.
+        <br><strong>Big thanks to the Wayback Machine and archive.org for preserving this data!</strong>
+    </p>
+</div>
 <h3>Available Endpoints</h3>
 
 <div class="endpoint">
     <strong>Lookup by ASIN</strong> <small>Not all books have ASINs</small><br>
-    <code>/asin/{asin}</code><br>
-    Example: <code>/asin/B09C4Y7T1Q</code><br>
+    <code><?php echo $prefix; ?>/asin/{asin}</code><br>
+    Example: <code><?php echo $prefix; ?>/asin/B09C4Y7T1Q</code><br>
     Append <code>/cover</code> to download cached cover:<br>
-    <code>/asin/B09C4Y7T1Q/cover</code>
+    <code><?php echo $prefix; ?>/asin/B09C4Y7T1Q/cover</code>
 </div>
 
 <div class="endpoint">
     <strong>Lookup by ISBN</strong><br>
-    <code>/isbn/{isbn}</code><br>
-    Example: <code>/isbn/9781427280583</code><br>
+    <code><?php echo $prefix; ?>/isbn/{isbn}</code><br>
+    Example: <code><?php echo $prefix; ?>/isbn/9781427280583</code><br>
     Append <code>/cover</code> to download cached cover:<br>
-    <code>/isbn/9781427280583/cover</code>
+    <code><?php echo $prefix; ?>/isbn/9781427280583/cover</code>
 </div>
 
 <div class="endpoint">
     <strong>Lookup by series name (fuzzy matching)</strong><br>
-    <code>/series/{series}</code><br>
-    Example: <code>/series/The%20Stormlight%20Archive</code>
+    <code><?php echo $prefix; ?>/series/{series}</code><br>
+    Example: <code><?php echo $prefix; ?>/series/The%20Stormlight%20Archive</code>
 </div>
 
 <div class="endpoint">
     <strong>🔍 Search (title, rawtitle, author or series)</strong><br>
-    <code>/search/{query}</code><br>
-    Example: <code>/search/Oathbringer</code>
+    <code><?php echo $prefix; ?>/search/{query}</code><br>
+    Example: <code><?php echo $prefix; ?>/search/Oathbringer</code>
 </div>
 
-<div class="endpoint" style="border-left-color:#aa00ff;">
+<div class="endpoint purple-border">
     <strong>📚 Audiobookshelf Metadata Provider</strong><br>
-    <code>/audiobookshelf/search?query={isbn|asin|text}</code><br>
+    <code><?php echo $prefix; ?>/audiobookshelf/search?query={isbn|asin|text}</code><br>
     <?php if (AUDIOBOOKSHELF_KEY !='abs'): ?>
     Requires <code>Authorization: YOUR_API_KEY</code> header.<br>
     <?php else: ?>
     Ignores authentication (open access).<br>
     <?php endif; ?>
     <small>Automatically detects ISBN / ASIN / text search.</small><br>
-    Example (ISBN): <code>/audiobookshelf/search?query=9798896520030</code><br>
-    Example (Title search): <code>/audiobookshelf/search?query=Stormlight</code>
+    Example (ISBN): <code><?php echo $prefix; ?>/audiobookshelf/search?query=9798896520030</code><br>
+    Example (Title search): <code><?php echo $prefix; ?>/audiobookshelf/search?query=Stormlight</code>
 </div>
 
-<div class="endpoint" style="border-left-color: #cc0000;">
+<div class="endpoint red-border">
     <strong>🚨 Force JSON Refresh (requires key)</strong><br>
-    <code>/refresh?key=YOUR_SECRET_KEY</code><br>
+    <code><?php echo $prefix; ?>/refresh?key=YOUR_SECRET_KEY_HERE</code><br>
     Clears APCu + cache.json and re-downloads fresh JSON. Must be a PUT with the key in the url<br>
     <em>Do not expose this key publicly.</em>
 </div>
@@ -585,13 +765,11 @@ if ($parts[0] === "audiobookshelf" && $parts[1] === "search") {
 <p>JSON source:<br>
 <code><?php echo JSON_URL; ?></code></p>
 
+<p>Wayback JSON source:<br>
+<code><?php echo WAYBACK_URL; ?></code></p>
 
-<footer style="
-    margin-top: 25px;
-    padding-top: 15px;
-    font-size: 0.9rem;
-    color: #555;
-">
+
+<footer>
     <p>
         This project is a hobby project created for personal use.
         It is <strong>not affiliated with, endorsed, or supported by GraphicAudio® 

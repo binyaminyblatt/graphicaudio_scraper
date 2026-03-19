@@ -19,27 +19,34 @@ All trademarks, cover images, metadata, and intellectual property belong to thei
 
 ## 🚀 Overview
 
-This project contains **two components**:
+This project contains **three components**:
 
 | Component  | Language | Purpose |
 |------------|----------|---------|
 | `index.js` | Node.js | Scrapes GraphicAudio product pages and saves results to `results.json` |
+| `index_wayback.js` | Node.js | Scrapes archived GraphicAudio pages from Wayback Machine and saves to `wayback_results.json` |
 | `index.php` | PHP | Serves metadata via HTTP APIs, including ABS custom metadata provider |
 
-The scraper produces a structured JSON file:
+The scrapers produce structured JSON files:
 
 ```txt
-results.json
+results.json        # Live catalog
+wayback_results.json # Archived catalog
 ```
 
-The PHP API loads that JSON (cached locally or via APCu), and exposes endpoints such as:
+The PHP API loads these JSON files (cached locally or via APCu), and exposes endpoints such as:
 
 ```txt
 /isbn/{isbn}
+/wayback/isbn/{isbn}
 /asin/{asin}
+/wayback/asin/{asin}
 /series/{series-name}
+/wayback/series/{series-name}
 /search/{query}
+/wayback/search/{query}
 /audiobookshelf/search?query={isbn|asin|text}
+/wayback/audiobookshelf/search?query={isbn|asin|text}
 ````
 
 ---
@@ -112,6 +119,42 @@ The script will:
 
 ---
 
+# 🕰️ 1b. Wayback Machine Scraper (Node.js)
+
+This project also includes a secondary scraper that pulls **archived GraphicAudio pages** from the Internet Archive's **Wayback Machine**. It can find older product pages that are no longer available on the live site.
+
+### ✅ Requirements
+
+- Node.js 20
+- `npm i` (same dependencies as the primary scraper)
+
+### 📁 Files
+
+| File                | Purpose                                                                 |
+|---------------------|-------------------------------------------------------------------------|
+| `index_wayback.js`  | Scrapes archived catalog snapshots and product pages via web.archive.org |
+| `wayback_urls.json` | Cached list of product URLs extracted from archived catalog snapshots   |
+| `wayback_results.json` | Output metadata JSON from the archived pages                          |
+
+### ▶️ Run
+
+```sh
+node index_wayback.js
+```
+
+### 🧠 What it does
+
+- Uses a curated list of Wayback Machine catalog snapshots (`catalogUrls`) to discover product pages.
+- Scrapes each archived product page and adds a `wayback_link` field pointing to the archived snapshot.
+- Stores the original live URL in `link` (stripping the Wayback prefix). **Note:** this URL may no longer work; use `wayback_link` to access the archived page reliably.
+- Supports resuming: rerunning will skip entries already saved in `wayback_results.json`.
+
+> ⚠️ **Disclaimer: Internet Archive Data Accuracy and Completeness**  
+> Data from the Wayback Machine may be **inaccurate or incomplete**. Archived pages can have missing metadata (covers, ISBNs, descriptions), broken links, or outdated information. The Internet Archive captures snapshots at different times, so not all data may be present or correct. Use this data with caution and verify against other sources when possible.
+> ⚠️ Note: Wayback snapshots vary in completeness. Some archived pages may have missing metadata (cover image, ISBN, etc.), depending on the snapshot.
+
+---
+
 # 🌐 2. Lookup API + Audiobookshelf Provider (PHP)
 
 ### ✅ Requirements
@@ -133,6 +176,7 @@ Edit these constants:
 
 ```php
 define("JSON_URL", "https://raw.githubusercontent.com/USERNAME/REPO/main/results.json");
+define("WAYBACK_URL", "https://raw.githubusercontent.com/USERNAME/REPO/main/wayback_results.json");
 define("REFRESH_KEY", "CHANGE_ME");
 define("AUDIOBOOKSHELF_KEY", "abs"); // "abs" = no auth required
 ```
@@ -147,34 +191,60 @@ define("AUDIOBOOKSHELF_KEY", "MYSECRETKEY123");
 
 ## 🧠 API Endpoints
 
+The API supports two datasets:
+
+- **Live Dataset**: Uses `results.json` (current GraphicAudio catalog)
+- **Wayback Dataset**: Uses `wayback_results.json` (archived pages from Wayback Machine)
+
+All endpoints work with both datasets. To query the Wayback dataset, prepend `/wayback/` to any endpoint (e.g., `/wayback/isbn/{isbn}`).
+
 ### 📘 Lookup by ISBN
 
 ```txt
 /isbn/{isbn}
+/wayback/isbn/{isbn}
 ```
 
 Get cover:
 
 ```txt
 /isbn/{isbn}/cover
+/wayback/isbn/{isbn}/cover
 ```
 
-### 🔍 Search by Title, Author, or Series
+### � Lookup by ASIN
+
+```txt
+/asin/{asin}
+/wayback/asin/{asin}
+```
+
+Get cover:
+
+```txt
+/asin/{asin}/cover
+/wayback/asin/{asin}/cover
+```
+
+### �🔍 Search by Title, Author, or Series
 
 ```txt
 /search/{query}
+/wayback/search/{query}
 ```
 
 ### 📚 List episodes in a series (fuzzy match)
 
 ```txt
 /series/{series-name}
+/wayback/series/{series-name}
 ```
 
 ### 🎧 Audiobookshelf Metadata Provider
 
 ```txt
 /audiobookshelf/search?query=stormlight
+/wayback/audiobookshelf/search?query=stormlight
 ```
 
 Auto-detects:
@@ -206,6 +276,7 @@ ABS receives results formatted like:
 
 ```txt
 PUT /refresh?key=YOURKEY
+PUT /wayback/refresh?key=YOURKEY
 ```
 
 ---
@@ -222,11 +293,13 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 | Feature                          | Status  |
 | -------------------------------- | ------- |
 | Full catalog scraping            | ✅      |
+| Wayback Machine scraping         | ✅      |
 | ISBN lookup                      | ✅      |
 | ASIN lookup                      | ✅      |
 | Series fuzzy detection           | ✅      |
 | Audiobookshelf metadata provider | ✅      |
 | Cached covers                    | ✅      |
+| /wayback/* endpoints             | ✅      |
 
 ---
 
@@ -285,18 +358,22 @@ To edit or improve results, simply delete:
 ```txt
 urls.json
 results.json
+wayback_urls.json
+wayback_results.json
 ```
 
 Next run:
 
 ```sh
-node scraper.js
+node index.js
+node index_wayback.js
 ```
 
 To force the PHP endpoint to refresh:
 
 ```sh
-curl -X PUT "https://yourdomain/refresh?key=SECRET"
+curl -X PUT "https://yourdomain/refresh?key=YOURKEY"
+curl -X PUT "https://yourdomain/wayback/refresh?key=YOURKEY"
 ```
 
 ---
