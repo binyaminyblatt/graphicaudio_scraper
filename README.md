@@ -1,9 +1,7 @@
 # 📚 GraphicAudio Scraper + Lookup API  
 
 > A personal project that scrapes metadata from **GraphicAudio** and exposes a lightweight lookup API that can also serve as an **Audiobookshelf Custom Metadata Provider**.
-
 > ⚠️ Note: While there is a public instance of this API, it’s hosted on a free plan with a very low data cap. If you’d like access, please send me a message and I can provide it.
-
 
 ---
 
@@ -233,7 +231,7 @@ The repository includes automated Docker builds via GitHub Actions:
 
 - **Triggers**: Pushes to `main` branch and pull requests affecting Docker-related files
 - **Registry**: Images are pushed to GitHub Container Registry (`ghcr.io`)
-- **Tags**: 
+- **Tags**:
   - `latest` for main branch
   - Branch name for other branches
   - PR number for pull requests
@@ -371,7 +369,9 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 | Audiobookshelf metadata provider | ✅           |
 | Cached covers                    | ✅           |
 | /wayback/* endpoints             | ✅           |
-| Docker deployment                | ⚠️ Untested  || GitHub Actions CI/CD            | ✅           |
+| Docker deployment                | ⚠️ Untested  |
+| GitHub Actions CI/CD             | ✅           |
+
 ---
 
 ### ⚠️ ASIN Note
@@ -448,6 +448,17 @@ curl -X PUT "https://yourdomain/wayback/refresh?key=YOURKEY"
 ```
 
 ---
+
+## 🗂️ Dataset Usage Policy
+
+You are free to use the scraped dataset for any purpose (personal or commercial). This project's code is released under the **MIT License**, but the dataset itself is derived from GraphicAudio content and should be used responsibly.
+
+- ✅ You may use the dataset in your own projects.
+- ✅ You may redistribute the dataset (credit to this repository is appreciated but not required).
+- ⭐ If you like what I'm doing, please star this repository!
+- 💛 If you use the Wayback dataset heavily, consider supporting the Internet Archive (e.g., <https://archive.org/donate>) to help keep these snapshots available.
+- 🙏 **Please do not** set up GitHub Actions to run `index_wayback.js` on a loop. While this project is MIT-licensed and you technically can, I sincerely ask that you respect the costs of running the Internet Archive. The Wayback scraper should be run manually or on rare occasions, not automatically on a schedule. The Internet Archive pages are static and won't change over time, so there's no benefit to running it repeatedly—only unnecessary cost.
+- ⚠️ Remember the dataset contains third-party content (GraphicAudio), so respect copyright and fair use.
 
 ## ⭐ Contributing
 
