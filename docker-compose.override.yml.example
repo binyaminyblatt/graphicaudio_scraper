@@ -1,0 +1,23 @@
+# Example docker-compose override file
+# Copy this to docker-compose.override.yml and customize
+
+version: '3.8'
+
+services:
+  graphicaudio-api:
+    environment:
+      # Set your own refresh key (optional - will be auto-generated if not set)
+      # - REFRESH_KEY=your_super_secret_key_here
+
+      # Audiobookshelf API key (use "abs" for no authentication)
+      - AUDIOBOOKSHELF_KEY=abs
+
+      # Enable/disable rate limiting
+      - LOW_BANDWIDTH_LIMIT_ENABLE=true
+
+      # Enable debug mode (not recommended for production)
+      - DEBUG=false
+
+      # Custom JSON URLs (optional)
+      # - JSON_URL=https://your-custom-url/results.json
+      # - WAYBACK_URL=https://your-custom-url/wayback_results.json

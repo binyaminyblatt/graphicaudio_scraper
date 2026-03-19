@@ -3,20 +3,20 @@
    CONFIG
 ---------------------------------------------------------*/
 define("JSON_URL",
-    "https://raw.githubusercontent.com/binyaminyblatt/graphicaudio_scraper/refs/heads/main/results.json"
+    getenv("JSON_URL") ?: "https://raw.githubusercontent.com/binyaminyblatt/graphicaudio_scraper/refs/heads/main/results.json"
 );
 define("CACHE_FILE", __DIR__ . "/cache.json");
-define("CACHE_TTL", 3600);
+define("CACHE_TTL", getenv("CACHE_TTL") ?: 3600);
 define("IMAGE_DIR", __DIR__ . "/covers");
 
-define("WAYBACK_URL", "https://raw.githubusercontent.com/binyaminyblatt/graphicaudio_scraper/refs/heads/main/wayback_results.json");
+define("WAYBACK_URL", getenv("WAYBACK_URL") ?: "https://raw.githubusercontent.com/binyaminyblatt/graphicaudio_scraper/refs/heads/main/wayback_results.json");
 define("WAYBACK_CACHE_FILE", __DIR__ . "/wayback_cache.json");
-define("REFRESH_KEY", "YOUR_SECRET_KEY_HERE"); // change this!
-define("AUDIOBOOKSHELF_KEY", "abs"); // change this!
+define("REFRESH_KEY", getenv("REFRESH_KEY") ?: "YOUR_SECRET_KEY_HERE"); // change this!
+define("AUDIOBOOKSHELF_KEY", getenv("AUDIOBOOKSHELF_KEY") ?: "abs"); // change this!
 // Use "abs" (default) for no authentication
 define("DEBUG_LOG", __DIR__ . "/debug.log");
-define("DEBUG", false); // set to true to enable debug logging and allow GET refresh (not recommended for production)
-define("LOW_BANDWIDTH_LIMIT_ENABLE", true);
+define("DEBUG", getenv("DEBUG") === "true"); // set to true to enable debug logging and allow GET refresh (not recommended for production)
+define("LOW_BANDWIDTH_LIMIT_ENABLE", getenv("LOW_BANDWIDTH_LIMIT_ENABLE") !== "false");
 
 
 

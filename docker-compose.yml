@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  graphicaudio-api:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      # Mount cache directory for persistent caching
+      - ./cache:/var/www/html/cache
+      # Mount covers directory for persistent cover images
+      - ./covers:/var/www/html/covers
+      # Mount debug log if needed
+      - ./debug.log:/var/www/html/debug.log
+    environment:
+      # Configure your settings here (PHP 8.3+ required)
+      # REFRESH_KEY will be auto-generated if not set
+      - AUDIOBOOKSHELF_KEY=abs  # or your API key
+      - LOW_BANDWIDTH_LIMIT_ENABLE=true
+      - DEBUG=false
+    restart: unless-stopped

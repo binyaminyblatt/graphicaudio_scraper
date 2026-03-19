@@ -1,0 +1,29 @@
+# Node.js files (not needed for PHP container)
+index.js
+index_wayback.js
+node_modules/
+package.json
+package-lock.json
+*.log
+
+# Cache files (will be mounted as volumes)
+cache/
+covers/
+cache.json
+wayback_cache.json
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+
+# Data files (will be downloaded at runtime)
+results.json
+wayback_results.json
+urls.json
+wayback_urls.json
+
+# Other
+other/

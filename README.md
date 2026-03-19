@@ -187,6 +187,46 @@ If you want **ABS to require an API key**, set:
 define("AUDIOBOOKSHELF_KEY", "MYSECRETKEY123");
 ```
 
+### 🐳 Docker Deployment
+
+> ⚠️ **Note:** The Docker setup is not tested. Use at your own risk and test thoroughly before production deployment.
+
+For easy deployment, use Docker:
+
+#### Build and Run with Docker Compose
+
+```sh
+# Build and start the container
+docker-compose up -d
+
+# The API will be available at http://localhost:8080
+```
+
+#### Manual Docker Build
+
+```sh
+# Build the image
+docker build -t graphicaudio-api .
+
+# Run the container
+docker run -d -p 8080:80 \
+  -v $(pwd)/cache:/var/www/html/cache \
+  -v $(pwd)/covers:/var/www/html/covers \
+  -e REFRESH_KEY=your_key_here \
+  graphicaudio-api
+```
+
+#### Docker Environment Variables
+
+- `REFRESH_KEY`: Secret key for cache refresh endpoint (auto-generated if not set)
+- `AUDIOBOOKSHELF_KEY`: API key for Audiobookshelf (use "abs" for no auth)
+- `LOW_BANDWIDTH_LIMIT_ENABLE`: Enable rate limiting (default: true)
+- `DEBUG`: Enable debug logging (default: false)
+- `JSON_URL`: Custom URL for results.json (optional)
+- `WAYBACK_URL`: Custom URL for wayback_results.json (optional)
+
+**Note:** If `REFRESH_KEY` is not set, a random 64-character hex key will be generated on container startup and printed to the console.
+
 ---
 
 ## 🧠 API Endpoints
@@ -290,16 +330,17 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 
 ## ✅ Status
 
-| Feature                          | Status  |
-| -------------------------------- | ------- |
-| Full catalog scraping            | ✅      |
-| Wayback Machine scraping         | ✅      |
-| ISBN lookup                      | ✅      |
-| ASIN lookup                      | ✅      |
-| Series fuzzy detection           | ✅      |
-| Audiobookshelf metadata provider | ✅      |
-| Cached covers                    | ✅      |
-| /wayback/* endpoints             | ✅      |
+| Feature                          | Status       |
+| -------------------------------- | ------------ |
+| Full catalog scraping            | ✅           |
+| Wayback Machine scraping         | ✅           |
+| ISBN lookup                      | ✅           |
+| ASIN lookup                      | ✅           |
+| Series fuzzy detection           | ✅           |
+| Audiobookshelf metadata provider | ✅           |
+| Cached covers                    | ✅           |
+| /wayback/* endpoints             | ✅           |
+| Docker deployment                | ⚠️ Untested  |
 
 ---
 
