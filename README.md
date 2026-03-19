@@ -227,6 +227,37 @@ docker run -d -p 8080:80 \
 
 **Note:** If `REFRESH_KEY` is not set, a random 64-character hex key will be generated on container startup and printed to the console.
 
+#### GitHub Actions Docker Builds
+
+The repository includes automated Docker builds via GitHub Actions:
+
+- **Triggers**: Pushes to `main` branch and pull requests affecting Docker-related files
+- **Registry**: Images are pushed to GitHub Container Registry (`ghcr.io`)
+- **Tags**: 
+  - `latest` for main branch
+  - Branch name for other branches
+  - PR number for pull requests
+  - Commit SHA for unique builds
+
+To use the pre-built image:
+
+```sh
+# Pull the latest image
+docker pull ghcr.io/binyaminyblatt/graphicaudio_scraper:latest
+
+# Run with docker-compose using the pre-built image
+docker-compose up -d
+```
+
+Make sure to update your `docker-compose.yml` to use the registry image:
+
+```yaml
+services:
+  graphicaudio-api:
+    image: ghcr.io/binyaminyblatt/graphicaudio_scraper:latest
+    # ... rest of your config
+```
+
 ---
 
 ## 🧠 API Endpoints
@@ -340,8 +371,7 @@ Once cached, they serve instantly without hitting GraphicAudio again.
 | Audiobookshelf metadata provider | ✅           |
 | Cached covers                    | ✅           |
 | /wayback/* endpoints             | ✅           |
-| Docker deployment                | ⚠️ Untested  |
-
+| Docker deployment                | ⚠️ Untested  || GitHub Actions CI/CD            | ✅           |
 ---
 
 ### ⚠️ ASIN Note

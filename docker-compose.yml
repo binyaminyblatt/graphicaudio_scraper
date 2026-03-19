@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   graphicaudio-api:
+    # Option 1: Build locally (default)
     build: .
+    # Option 2: Use pre-built image from GitHub Container Registry
+    # image: ghcr.io/binyaminyblatt/graphicaudio_scraper:latest
     ports:
       - "8080:80"
     volumes:
