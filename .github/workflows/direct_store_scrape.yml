@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  scrape:
+  direct_store_scrape:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,7 +38,7 @@ jobs:
       - name: Run scraper
         run: |
           echo "🚀 Starting scraper..."
-          node index.js
+          node index_direct_store.js
 
       - name: Commit and push changes
         run: |
@@ -46,8 +46,8 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add results.json
-            git commit -m "Automated scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+            git add direct-store-exclusives.json
+            git commit -m "Automated direct store scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
             git push
           else
             echo "No new data — nothing to commit"
