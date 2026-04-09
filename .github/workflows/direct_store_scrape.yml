@@ -1,4 +1,4 @@
-name: Scrape GraphicAudio catalog
+name: Scrape Direct Store Exclusives GraphicAudio catalog
 
 on:
   workflow_dispatch:        # allow manual run
