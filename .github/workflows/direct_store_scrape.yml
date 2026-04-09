@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  direct_store_scrape:
+  scrape:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,7 +38,7 @@ jobs:
       - name: Run scraper
         run: |
           echo "🚀 Starting scraper..."
-          node index_direct_store.js
+          node index.js
 
       - name: Commit and push changes
         run: |
@@ -46,9 +46,25 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add direct-store-exclusives.json
-            git commit -m "Automated direct store scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+            git add results.json
+            git commit -m "Automated scrape: $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
             git push
           else
             echo "No new data — nothing to commit"
           fi
+
+      - name: Trigger server refresh (optional)
+        if: success()
+        run: |
+            if [[ -n "${{ secrets.REFRESH_URL }}" ]]; then
+                echo "📬 Triggering server refresh..."
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${{ secrets.REFRESH_URL }}" || echo "000")
+
+                if [[ "$STATUS" -eq 200 ]]; then
+                    echo "✅ Server refresh successful"
+                else
+                    echo "⚠️ Server refresh failed, HTTP $STATUS — continuing workflow"
+                fi
+            else
+                echo "REFRESH_URL not set — skipping server refresh"
+            fi
