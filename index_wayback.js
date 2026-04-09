@@ -21,7 +21,9 @@ const catalogUrls = [
   "https://web.archive.org/web/20160316170752/https://www.graphicaudio.net/our-productions/series/marvel.html",
   "https://web.archive.org/web/20150109020426/http://www.graphicaudio.net/our-productions/genres/western/great-american-westerns-western.html",
   "http://web.archive.org/web/20160316133514/http://www.graphicaudio.net/our-productions/authors/a-e/don-pendleton.html",
-  "https://web.archive.org/web/20140720100944/http://www.graphicaudio.net/our-productions/authors/a-e/don-pendleton.html"
+  "https://web.archive.org/web/20140720100944/http://www.graphicaudio.net/our-productions/authors/a-e/don-pendleton.html",
+  "https://web.archive.org/web/20191217052259/http://www.graphicaudio.net/our-productions/authors/a-e/don-pendleton.html",
+  "https://web.archive.org/web/20211118235432/http://www.graphicaudio.net/our-productions/authors/a-e/don-pendleton.html",
 
 ];
 const singleProductUrls = [
