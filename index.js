@@ -1,10 +1,11 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 import fs from "fs";
+import {getFilteredUrls} from "./SitemapUrls.js";
+
 
 const urlsFile = "./urls.json";
 const resultsFile = "./results.json";
-const catalogUrl = "https://www.graphicaudiointernational.net/our-productions.html?product_list_limit=all";
 
 /** Utility functions */
 function cleanISBN(raw) {
@@ -101,25 +102,16 @@ async function getProductUrls() {
     console.log("📂 Loading cached product URLs...");
     return JSON.parse(fs.readFileSync(urlsFile));
   }
-
   console.log("🌐 Fetching catalog (this may take a while)...");
-  const { data: listHtml } = await axios.get(catalogUrl);
-  const $list = cheerio.load(listHtml);
 
-  const productUrls = $list("li.product-item")
-    .filter(function () {
-      const sku = $list(this).attr("data-sku");
-      return sku && !sku.includes("-SET-");
-    })
-    .map(function () {
-      return $list(this).find("a").first().attr("href");
-    })
-    .get()
-    .filter(Boolean);
+  const sitemapUrls = await getFilteredUrls();
 
-  fs.writeFileSync(urlsFile, JSON.stringify(productUrls, null, 2));
-  console.log(`✅ Cached ${productUrls.length} product URLs to ${urlsFile}`);
-  return productUrls;
+  console.log(`🌐 Using sitemap URLs: ${sitemapUrls.length}`);
+
+  fs.writeFileSync(urlsFile, JSON.stringify(sitemapUrls, null, 2));
+
+  console.log(`✅ Cached ${sitemapUrls.length} product URLs`);
+  return sitemapUrls;
 }
 
 /** Main scraper */
