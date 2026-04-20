@@ -29,6 +29,7 @@ const catalogUrls = [
 const singleProductUrls = [
   ["https://web.archive.org/web/20170216010540/http://www.graphicaudio.net/peacer-unmasked.html", {"cover": "https://web.archive.org/web/20170422213306im_/http://www.graphicaudio.net/media/catalog/product/cache/1/small_image/265x/9df78eab33525d08d6e5fb8d27136e95/p/e/peacer00.jpg"}],
   ["https://web.archive.org/web/20100731052852/http://www.graphicaudio.net/p-34-snakes-on-a-plane-the-audiobook.aspx", {"cover": "https://pictures.abebooks.com/isbn/9781599501666-us-300._FMwebp_.jpg"}],
+  ["https://web.archive.org/web/20111204222223/http://www.graphicaudio.net/p-594-dc-universe-last-sons.aspx", {}]
 ];
 
 /** Utility functions */
