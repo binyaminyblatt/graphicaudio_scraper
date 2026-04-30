@@ -29,7 +29,14 @@ const catalogUrls = [
 const singleProductUrls = [
   ["https://web.archive.org/web/20170216010540/http://www.graphicaudio.net/peacer-unmasked.html", {"cover": "https://web.archive.org/web/20170422213306im_/http://www.graphicaudio.net/media/catalog/product/cache/1/small_image/265x/9df78eab33525d08d6e5fb8d27136e95/p/e/peacer00.jpg"}],
   ["https://web.archive.org/web/20100731052852/http://www.graphicaudio.net/p-34-snakes-on-a-plane-the-audiobook.aspx", {"cover": "https://pictures.abebooks.com/isbn/9781599501666-us-300._FMwebp_.jpg"}],
-  ["https://web.archive.org/web/20111204222223/http://www.graphicaudio.net/p-594-dc-universe-last-sons.aspx", {}]
+  ["https://web.archive.org/web/20111204222223/http://www.graphicaudio.net/p-594-dc-universe-last-sons.aspx", {}],
+  ['https://web.archive.org/web/20190103150850/https://www.graphicaudio.net/marvel-avengers-vs-x-men.html', {}],
+  ['https://web.archive.org/web/20170827083618/http://www.graphicaudio.net/captain-america-dark-designs.html', {}],
+  ['https://web.archive.org/web/20170723063828/http://www.graphicaudio.net/daredevil-the-man-without-fear.html', {}],
+  ['https://web.archive.org/web/20170913045438/http://www.graphicaudio.net/dr-strange-the-fate-of-dreams.html', {}],
+  ['https://web.archive.org/web/20170913045414/http://www.graphicaudio.net/planet-hulk.html', {}],
+  ['https://web.archive.org/web/20170913045449/http://www.graphicaudio.net/the-ultimates-against-all-enemies.html', {}],
+  ['https://web.archive.org/web/20170915025824/http://www.graphicaudio.net/the-ultimates-tomorrow-men.html', {}],
 ];
 
 /** Utility functions */
@@ -96,8 +103,14 @@ async function scrapeProduct(url, cover_fallback = null) {
 
   let rawTitle = cleanText($(".episode-name").text());
   if (!rawTitle) {
+    console.log("📖 Episode name not found, trying ProductNameText...");
     rawTitle = cleanText($(".ProductNameText").text());
   }
+    if (!rawTitle) {
+    console.log("📖 Episode name not found, trying full episode-name path...");
+    rawTitle = cleanText($("#product_addtocart_form > div:nth-child(2) > div.product-shop.col-sm-6.downloadable > h1 > div.episode-name").text());
+  }
+  console.log(`📖 Raw title: ${rawTitle}`);
 
   let cover = $(".product-image").attr("src") || null;
   if (cover && cover.endsWith("tempcover.jpg")) {
